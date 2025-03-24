@@ -336,31 +336,19 @@
             let isPaused = false;
             let timerQueue = [];
             let currentTimerIndex = -1;
+            let timerEndTime = 0; // Store the timestamp when timer should end
             
             // Running Sheet state
             let runningSheet = [];
             
-            // Load data from localStorage if available
-            function loadFromLocalStorage() {
-                const savedTimerQueue = localStorage.getItem('timerQueue');
-                const savedRunningSheet = localStorage.getItem('runningSheet');
-                
-                if (savedTimerQueue) {
-                    timerQueue = JSON.parse(savedTimerQueue);
-                    updateQueueDisplay();
-                }
-                
-                if (savedRunningSheet) {
-                    runningSheet = JSON.parse(savedRunningSheet);
-                    updateRunningSheetDisplay();
-                }
-            }
+            // Local Storage Keys
+            const TIMER_STATE_KEY = 'timerState';
+            const TIMER_QUEUE_KEY = 'timerQueue';
+            const RUNNING_SHEET_KEY = 'runningSheet';
+            const TIMER_END_KEY = 'timerEndTime';
             
-            // Save data to localStorage
-            function saveToLocalStorage() {
-                localStorage.setItem('timerQueue', JSON.stringify(timerQueue));
-                localStorage.setItem('runningSheet', JSON.stringify(runningSheet));
-            }
+            // Load saved data from localStorage
+            loadFromLocalStorage();
             
             // Timer Functions
             function updateDisplay(seconds) {
@@ -401,10 +389,16 @@
                 
                 updateDisplay(totalSeconds);
                 
+                // Calculate end time (current time + totalSeconds)
+                timerEndTime = Date.now() + totalSeconds * 1000;
+                
                 isTimerRunning = true;
                 isPaused = false;
                 controls.classList.add('hidden');
                 editTimerBtn.classList.remove('hidden');
+                
+                // Save state
+                saveTimerState();
                 
                 countdown = setInterval(function() {
                     totalSeconds--;
@@ -413,6 +407,8 @@
                     if (totalSeconds <= 0) {
                         clearInterval(countdown);
                         isTimerRunning = false;
+                        timerEndTime = 0;
+                        saveTimerState();
                         playAlarm();
                         
                         // Check if there's a next timer in queue
@@ -437,6 +433,11 @@
                     isPaused = false;
                     pauseBtn.textContent = "PAUSE";
                     
+                    // Recalculate end time
+                    timerEndTime = Date.now() + totalSeconds * 1000;
+                    
+                    saveTimerState();
+                    
                     countdown = setInterval(function() {
                         totalSeconds--;
                         updateDisplay(totalSeconds);
@@ -444,6 +445,8 @@
                         if (totalSeconds <= 0) {
                             clearInterval(countdown);
                             isTimerRunning = false;
+                            timerEndTime = 0;
+                            saveTimerState();
                             playAlarm();
                             
                             // Check if there's a next timer in queue
@@ -465,16 +468,19 @@
                     isPaused = true;
                     pauseBtn.textContent = "RESUME";
                     clearInterval(countdown);
+                    saveTimerState();
                 }
             }
             
             function editTimer() {
                 clearInterval(countdown);
                 isTimerRunning = false;
+                timerEndTime = 0;
                 controls.classList.remove('hidden');
                 editTimerBtn.classList.add('hidden');
                 pauseBtn.classList.remove('hidden');
                 setInputTime(totalSeconds);
+                saveTimerState();
             }
             
             function addToQueue() {
@@ -486,8 +492,8 @@
                 }
                 
                 timerQueue.push(seconds);
+                saveTimerQueue();
                 updateQueueDisplay();
-                saveToLocalStorage();
                 
                 // Clear inputs after adding to queue
                 setInputTime(0);
@@ -546,8 +552,8 @@
                     currentTimerIndex--;
                 }
                 
+                saveTimerQueue();
                 updateQueueDisplay();
-                saveToLocalStorage();
             }
             
             function startNextTimer() {
@@ -556,12 +562,18 @@
                 if (currentTimerIndex < timerQueue.length) {
                     totalSeconds = timerQueue[currentTimerIndex];
                     updateDisplay(totalSeconds);
+                    
+                    // Calculate end time
+                    timerEndTime = Date.now() + totalSeconds * 1000;
+                    
                     updateQueueDisplay();
                     
                     isTimerRunning = true;
                     isPaused = false;
                     controls.classList.add('hidden');
                     editTimerBtn.classList.remove('hidden');
+                    
+                    saveTimerState();
                     
                     countdown = setInterval(function() {
                         totalSeconds--;
@@ -570,6 +582,8 @@
                         if (totalSeconds <= 0) {
                             clearInterval(countdown);
                             isTimerRunning = false;
+                            timerEndTime = 0;
+                            saveTimerState();
                             playAlarm();
                             
                             // Check if there's a next timer in queue
@@ -584,6 +598,7 @@
                                 setInputTime(0);
                                 updateDisplay(0);
                                 updateQueueDisplay();
+                                saveTimerState();
                             }
                         }
                     }, 1000);
@@ -605,9 +620,10 @@
                     description: eventDesc
                 });
                 
-                // No sorting - keep in order added
+                // No sorting, keep in added order
+                
+                saveRunningSheetData();
                 updateRunningSheetDisplay();
-                saveToLocalStorage();
                 
                 // Clear inputs
                 eventTimeInput.value = '';
@@ -654,18 +670,135 @@
             
             function removeFromSheet(index) {
                 runningSheet.splice(index, 1);
+                saveRunningSheetData();
                 updateRunningSheetDisplay();
-                saveToLocalStorage();
             }
             
             function saveRunningSheet() {
                 runningSheetControls.classList.add('hidden');
                 editSheetBtn.classList.remove('hidden');
+                saveRunningSheetData();
             }
             
             function editRunningSheet() {
                 runningSheetControls.classList.remove('hidden');
                 editSheetBtn.classList.add('hidden');
+            }
+            
+            // LocalStorage Functions
+            function saveTimerState() {
+                const timerState = {
+                    isRunning: isTimerRunning,
+                    isPaused: isPaused,
+                    totalSeconds: totalSeconds,
+                    currentTimerIndex: currentTimerIndex,
+                    timerEndTime: timerEndTime
+                };
+                
+                localStorage.setItem(TIMER_STATE_KEY, JSON.stringify(timerState));
+                localStorage.setItem(TIMER_END_KEY, timerEndTime.toString());
+            }
+            
+            function saveTimerQueue() {
+                localStorage.setItem(TIMER_QUEUE_KEY, JSON.stringify(timerQueue));
+            }
+            
+            function saveRunningSheetData() {
+                localStorage.setItem(RUNNING_SHEET_KEY, JSON.stringify(runningSheet));
+            }
+            
+            function loadFromLocalStorage() {
+                // Load timer queue
+                const savedQueue = localStorage.getItem(TIMER_QUEUE_KEY);
+                if (savedQueue) {
+                    timerQueue = JSON.parse(savedQueue);
+                    updateQueueDisplay();
+                }
+                
+                // Load running sheet
+                const savedSheet = localStorage.getItem(RUNNING_SHEET_KEY);
+                if (savedSheet) {
+                    runningSheet = JSON.parse(savedSheet);
+                    updateRunningSheetDisplay();
+                }
+                
+                // Load timer state
+                const savedTimerState = localStorage.getItem(TIMER_STATE_KEY);
+                const savedEndTime = localStorage.getItem(TIMER_END_KEY);
+                
+                if (savedTimerState && savedEndTime) {
+                    const timerState = JSON.parse(savedTimerState);
+                    const endTime = parseInt(savedEndTime);
+                    
+                    // Check if timer was running and should still be running
+                    if (timerState.isRunning && !timerState.isPaused && endTime > Date.now()) {
+                        // Calculate remaining seconds
+                        const remainingMs = endTime - Date.now();
+                        totalSeconds = Math.ceil(remainingMs / 1000);
+                        currentTimerIndex = timerState.currentTimerIndex;
+                        
+                        // Restore timer UI state
+                        controls.classList.add('hidden');
+                        editTimerBtn.classList.remove('hidden');
+                        
+                        // Start the timer with remaining time
+                        isTimerRunning = true;
+                        timerEndTime = endTime;
+                        updateDisplay(totalSeconds);
+                        updateQueueDisplay();
+                        
+                        countdown = setInterval(function() {
+                            totalSeconds--;
+                            updateDisplay(totalSeconds);
+                            
+                            if (totalSeconds <= 0) {
+                                clearInterval(countdown);
+                                isTimerRunning = false;
+                                timerEndTime = 0;
+                                saveTimerState();
+                                playAlarm();
+                                
+                                // Check if there's a next timer in queue
+                                if (currentTimerIndex < timerQueue.length - 1) {
+                                    setTimeout(() => {
+                                        startNextTimer();
+                                    }, 2000);
+                                } else {
+                                    currentTimerIndex = -1;
+                                    controls.classList.remove('hidden');
+                                    editTimerBtn.classList.add('hidden');
+                                    setInputTime(0);
+                                    updateDisplay(0);
+                                    updateQueueDisplay();
+                                }
+                            }
+                        }, 1000);
+                    } else if (timerState.isPaused) {
+                        // Restore paused timer
+                        totalSeconds = timerState.totalSeconds;
+                        currentTimerIndex = timerState.currentTimerIndex;
+                        isTimerRunning = true;
+                        isPaused = true;
+                        
+                        controls.classList.remove('hidden');
+                        editTimerBtn.classList.add('hidden');
+                        pauseBtn.classList.remove('hidden');
+                        pauseBtn.textContent = "RESUME";
+                        
+                        updateDisplay(totalSeconds);
+                        updateQueueDisplay();
+                    } else {
+                        // Timer was not running or has expired
+                        updateDisplay(0);
+                    }
+                }
+                
+                // Load running sheet UI state
+                if (editSheetBtn.classList.contains('hidden')) {
+                    runningSheetControls.classList.remove('hidden');
+                } else {
+                    runningSheetControls.classList.add('hidden');
+                }
             }
             
             // Timer Event Listeners
@@ -701,19 +834,18 @@
                 });
             });
             
-            // Load saved data on page load
-            loadFromLocalStorage();
+            // Check for changes before closing or refreshing
+            window.addEventListener('beforeunload', function() {
+                saveTimerState();
+                saveTimerQueue();
+                saveRunningSheetData();
+            });
             
             // Initialize
             updateDisplay(0);
-            
-            // Check if running sheet controls should be hidden on load
-            if (editSheetBtn.classList.contains('hidden')) {
-                runningSheetControls.classList.remove('hidden');
-            } else {
-                runningSheetControls.classList.add('hidden');
-            }
+            updateRunningSheetDisplay();
         });
     </script>
 </body>
+    test
 </html>
